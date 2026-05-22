@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Benchmark artifacts: regenerable; the SQLite log is a large binary
+*.sqlite
+*.db
+results/summaries.json
+results/test_*
+*.output
+
+# Harness / editor internals
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Διαχείριση Ιστορικού Συνομιλίας & Prompt Caching — Αναφορά Πειράματος</title>
+<style>
+  :root{
+    --bg:#faf8f3; --panel:#ffffff; --ink:#1f2328; --muted:#5b6470; --line:#e3ddd0;
+    --accent:#0e6e64; --accent2:#b25a36; --good:#2f8f6b; --bad:#c2553f; --warn:#c8902a;
+    --code:#f3efe6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.65 "Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:920px;margin:0 auto;padding:48px 24px 80px}
+  h1,h2,h3{font-family:Georgia,"Times New Roman",serif;line-height:1.25;color:#16201d}
+  h1{font-size:34px;margin:0 0 6px}
+  h2{font-size:25px;margin:52px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--accent)}
+  h3{font-size:19px;margin:28px 0 8px;color:var(--accent)}
+  .lead{color:var(--muted);font-size:18px;margin:0 0 4px}
+  .meta{color:var(--muted);font-size:13px;margin-top:10px}
+  p{margin:12px 0}
+  a{color:var(--accent)}
+  code,.mono{font-family:ui-monospace,"SFMono-Regular",Consolas,monospace;
+    background:var(--code);padding:1px 6px;border-radius:5px;font-size:.9em}
+  pre{background:#1c2622;color:#dfe7e2;padding:14px 16px;border-radius:10px;overflow:auto;font-size:13.5px}
+  pre code{background:none;color:inherit;padding:0}
+  .tldr{background:linear-gradient(180deg,#eef7f5,#ffffff);border:1px solid var(--line);
+    border-left:5px solid var(--accent);border-radius:12px;padding:18px 22px;margin:22px 0}
+  .tldr h3{margin-top:0;color:var(--ink)}
+  .callout{border:1px solid var(--line);border-left:5px solid var(--warn);background:#fffaf0;
+    border-radius:10px;padding:14px 18px;margin:18px 0}
+  .callout.good{border-left-color:var(--good);background:#f1faf5}
+  .callout.bad{border-left-color:var(--bad);background:#fdf3f1}
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14.5px}
+  th,td{padding:9px 11px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
+  td.num,th.num{text-align:right;font-family:ui-monospace,Consolas,monospace}
+  tr:hover td{background:#fdfcf8}
+  .tag{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:20px}
+  .tag.a{background:#e7f1ef;color:var(--accent)}
+  .tag.b{background:#fbeae5;color:var(--bad)}
+  .tag.c{background:#fdf3df;color:var(--warn)}
+  .pill{font-weight:700}
+  .pill.g{color:var(--good)} .pill.r{color:var(--bad)} .pill.w{color:var(--warn)}
+  .chart{margin:18px 0}
+  .row{display:grid;grid-template-columns:128px 1fr 64px;align-items:center;gap:10px;margin:6px 0}
+  .row .lbl{font-size:13px;color:var(--muted)}
+  .bar{height:18px;border-radius:5px;background:#ece6da;overflow:hidden}
+  .bar > i{display:block;height:100%;border-radius:5px}
+  .row .val{font-family:ui-monospace,Consolas,monospace;font-size:13px;text-align:right}
+  .fill-acc{background:linear-gradient(90deg,#0e6e64,#3fa392)}
+  .fill-cache{background:linear-gradient(90deg,#3a6ea5,#6fa8d6)}
+  .fill-cost{background:linear-gradient(90deg,#b25a36,#d99066)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  @media(max-width:680px){.grid2{grid-template-columns:1fr}.row{grid-template-columns:96px 1fr 56px}}
+  .foot{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+  .kbd{font-family:ui-monospace,Consolas,monospace;font-size:.85em;background:#1c2622;color:#dfe7e2;padding:2px 7px;border-radius:5px}
+  ul{margin:10px 0;padding-left:22px} li{margin:5px 0}
+  .small{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Διαχείριση Ιστορικού Συνομιλίας &amp; Prompt Caching</h1>
+  <p class="lead">Πείραμα μέτρησης του trade-off μεταξύ <strong>κόστους</strong>, <strong>cache hit rate</strong> και <strong>ακρίβειας ανάκλησης</strong> σε τρεις στρατηγικές διαχείρισης ιστορικού.</p>
+  <p class="meta">Μοντέλα: <code>gpt-4o</code> (OpenAI) &amp; <code>claude-haiku-4-5</code> (Anthropic) · 100 ερωτήσεις/συνομιλία · MCQ εξέταση μνήμης 12 ερωτήσεων · Μάιος 2026</p>
+
+  <div class="tldr">
+    <h3>Με δύο λόγια (TL;DR)</h3>
+    <ul>
+      <li><strong>Cache hit = ταίριασμα prefix.</strong> Οποιαδήποτε αλλαγή έστω και ενός byte στο prefix ακυρώνει το cache από εκείνο το σημείο και μετά. Σταθερό prefix → φθηνά reads· μεταβλητό prefix → πληρώνεις πλήρη τιμή.</li>
+      <li><strong>Το append-only (Στρατηγική Α) είναι το ταβάνι ακρίβειας</strong> (100%) και έχει το υψηλότερο cache hit, αλλά το context μεγαλώνει γραμμικά → σε μακριές συνομιλίες το κόστος εκτοξεύεται.</li>
+      <li><strong>Το compaction (Στρατηγική C) με σωστό <code>n</code> αξίζει:</strong> στο Haiku, το <code>n=40</code> πιάνει <span class="pill g">100% ακρίβεια</span> με φραγμένο context — ισοφαρίζει το append-only χωρίς το γραμμικό κόστος.</li>
+      <li><strong>Το naive pruning (Στρατηγική B) ΔΕΝ αξίζει:</strong> ξεχνάει τα πρώτα/μεσαία facts (0–17%) <em>χωρίς</em> να είναι φθηνότερο. Κυριαρχείται (dominated) από τις άλλες δύο.</li>
+      <li><strong>Tool calls &amp; RAG αλλάζουν δραματικά την εικόνα:</strong> τα tools μπαίνουν <em>πρώτα</em> στο prefix, οπότε ένα δυναμικό tool-set ή RAG context στην αρχή «σπάει» όλο το cache. Ο κανόνας: σταθερά μπροστά, μεταβλητά πίσω.</li>
+    </ul>
+  </div>
+
+  <!-- ===================== 1. ΤΙ ΔΟΚΙΜΑΣΑΜΕ ===================== -->
+  <h2>1. Τι δοκιμάσαμε</h2>
+  <p>Όταν ένας LLM agent κρατάει μια μακριά συνομιλία, ολόκληρο το ιστορικό ξαναστέλνεται σε κάθε γύρο. Ο τρόπος που διαχειρίζεσαι αυτό το ιστορικό ελέγχει <strong>ταυτόχρονα τρία πράγματα</strong>: πόσο πληρώνεις, πόσο καλά δουλεύει το prompt caching, και πόσο «θυμάται» το μοντέλο. Στήσαμε ένα ελεγχόμενο end-to-end πείραμα για να μετρήσουμε αυτό ακριβώς το τριπλό trade-off.</p>
+
+  <h3>Οι τρεις στρατηγικές</h3>
+  <table>
+    <thead><tr><th>Στρατηγική</th><th>Συμπεριφορά</th><th>Λογική</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag a">A</span> Append-only</td><td>Δεν κόβει ποτέ· κάθε γύρος προστίθεται στο τέλος.</td><td>Σταθερό prefix → υψηλό cache hit, αλλά context (και κόστος) που μεγαλώνει γραμμικά.</td></tr>
+      <tr><td><span class="tag b">B</span> Front-slash (pruning)</td><td>Κρατάει το πολύ <code>n</code> μηνύματα· όταν ξεπεραστεί, πετάει το παλαιότερο.</td><td>Φράζει το context, αλλά το «παράθυρο» μετακινείται κάθε γύρο → χαλάει το cache της ουράς και ξεχνάει παλιά facts.</td></tr>
+      <tr><td><span class="tag c">C</span> Compaction</td><td>Αφήνει το ιστορικό να φτάσει τα <code>n</code> μηνύματα, μετά το συνοψίζει με ένα γρήγορο μοντέλο και αντικαθιστά το raw block με μια πυκνή περίληψη.</td><td>Φράζει το context <em>και</em> διατηρεί τα facts, ξαναχτίζοντας ένα σταθερό cache baseline.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Σχεδιασμός πειράματος</h3>
+  <ul>
+    <li><strong>Setup:</strong> ένα μεγάλο σταθερό system prompt (&gt; 4096 tokens, ώστε να ενεργοποιείται το cache του Haiku από τον πρώτο γύρο) δίνει εντολή στο μοντέλο να κάνει «συνέντευξη» ρωτώντας 100 ερωτήσεις, μία-μία.</li>
+    <li><strong>Συνέντευξη:</strong> το script παίζει έναν σταθερό φανταστικό χαρακτήρα και απαντά και στις 100 ερωτήσεις. Κάθε απάντηση κουβαλάει ένα μοναδικό fact. Η στρατηγική επεξεργάζεται το ιστορικό σε <em>κάθε</em> γύρο.</li>
+    <li><strong>Εξέταση:</strong> ένα MCQ τεστ μνήμης 12 ερωτήσεων ελέγχει facts απ’ όλο το εύρος (με έμφαση στην αρχή/μέση — εκεί ακριβώς που χτυπάει το pruning/compaction). Το μοντέλο απαντά σε αυστηρό JSON· η βαθμολόγηση είναι <em>ντετερμινιστική</em> (ακριβές ταίριασμα γράμματος, χωρίς LLM judge).</li>
+  </ul>
+  <p class="small">Κάθε API call καταγράφηκε σε SQLite: πλήρης ανάλυση tokens (uncached / cached / cache-write / output), υπολογισμένο κόστος, και ολόκληρο το request/response payload.</p>
+
+  <!-- ===================== 2. ΚΑΝΟΝΕΣ CACHE HIT ===================== -->
+  <h2>2. Πότε θεωρείται κάτι «cache hit»; — Οι κανόνες</h2>
+  <p>Το prompt caching και στους δύο providers είναι <strong>prefix cache</strong>. Υπάρχει ένας θεμελιώδης κανόνας απ’ τον οποίο απορρέουν όλοι οι άλλοι:</p>
+  <div class="callout"><strong>Ο μοναδικός νόμος:</strong> Το cache δουλεύει με ταίριασμα <em>προθέματος (prefix)</em>. Οποιαδήποτε αλλαγή — έστω κι ένα byte — οπουδήποτε μέσα στο prefix ακυρώνει το cache για <em>όλα</em> όσα έρχονται μετά. Το cache key προκύπτει απ’ τα ακριβή bytes του rendered prompt μέχρι κάθε breakpoint.</p>
+
+  <h3>Σειρά rendering &amp; πού «κουμπώνει» το cache</h3>
+  <p>Το prompt χτίζεται πάντα με τη σειρά: <code>tools → system → messages</code>. Άρα ό,τι είναι σταθερό πρέπει να μπαίνει <strong>μπροστά</strong>, κι ό,τι αλλάζει (timestamps, per-request IDs, retrieved chunks, η τρέχουσα ερώτηση) <strong>πίσω</strong>, μετά το τελευταίο σημείο που θέλεις να κάνει cache.</p>
+
+  <h3>Ελάχιστο μέγεθος για να «πιάσει» το cache</h3>
+  <table>
+    <thead><tr><th>Provider / Μοντέλο</th><th class="num">Ελάχιστο prefix</th><th>Σημείωση</th></tr></thead>
+    <tbody>
+      <tr><td>OpenAI (π.χ. <code>gpt-4o</code>)</td><td class="num">1.024 tokens</td><td>Αυτόματο caching· κάτω απ’ αυτό απλώς δεν γίνεται cache (σιωπηλά).</td></tr>
+      <tr><td>Anthropic — Opus 4.x / <code>Haiku 4.5</code></td><td class="num">4.096 tokens</td><td>Γι’ αυτό φτιάξαμε το system prompt μας να ξεπερνά τα 4096 (μετρήθηκε στα 4.273).</td></tr>
+      <tr><td>Anthropic — Sonnet 4.6</td><td class="num">2.048 tokens</td><td>Διαφέρει ανά μοντέλο.</td></tr>
+      <tr><td>Anthropic — Sonnet 4.5 / 3.7</td><td class="num">1.024 tokens</td><td>Ένα prompt 3K tokens κάνει cache στο Sonnet 4.5 αλλά <em>όχι</em> στο Haiku 4.5.</td></tr>
+    </tbody>
+  </table>
+  <p class="callout bad"><strong>Πραγματικό εύρημα του πειράματός μας:</strong> με το αρχικό system prompt στα ~1.245 tokens, το <code>cache_read</code> του Anthropic έβγαινε σιωπηλά <strong>μηδέν</strong>. Μόνο αφού το μεγαλώσαμε &gt; 4096 ενεργοποιήθηκε το cache (cache reads ~4.277 tokens/κλήση). Το «δεν κάνει cache» δεν δίνει error — απλώς πληρώνεις πλήρη τιμή χωρίς να το καταλάβεις.</p>
+
+  <h3>Μηχανισμός ανά provider</h3>
+  <div class="grid2">
+    <div>
+      <h3 style="margin-top:0">OpenAI — αυτόματο</h3>
+      <ul>
+        <li>Γίνεται μόνο του σε prefix ≥ 1024 tokens.</li>
+        <li><code>prompt_cache_key</code>: σταθεροποιεί το routing (ίδιο key → ίδιο μηχάνημα → πιο πιθανό hit).</li>
+        <li><code>prompt_cache_retention: "24h"</code>: κρατάει το cache ζεστό μεταξύ γύρων.</li>
+        <li>Έκπτωση: cached input ≈ <strong>0.5×</strong> (gpt-4o: $1.25 vs $2.50 / 1Μ).</li>
+        <li>Έλεγχος: <code>usage.prompt_tokens_details.cached_tokens</code>.</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Anthropic — ρητό (explicit)</h3>
+      <ul>
+        <li>Βάζεις <code>cache_control: {"type":"ephemeral"}</code> σε blocks — έως <strong>4 breakpoints</strong>.</li>
+        <li>TTL: 5 λεπτά (default) ή 1 ώρα.</li>
+        <li>Κόστος: cache <strong>read ≈ 0.1×</strong>, cache <strong>write ≈ 1.25×</strong> (5′) ή 2× (1ω).</li>
+        <li>«Παράθυρο» αναζήτησης: 20 blocks προς τα πίσω — σε agentic loops με &gt;20 tool blocks/γύρο σπάει το incremental cache.</li>
+        <li>Έλεγχος: <code>usage.cache_read_input_tokens</code> / <code>cache_creation_input_tokens</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Τι σου «σπάει» σιωπηλά το cache (silent invalidators)</h3>
+  <ul>
+    <li><strong>Αλλαγή στα tools</strong> (προσθήκη/αφαίρεση/αναδιάταξη): τα tools είναι στη θέση 0 → ακυρώνεται <em>ολόκληρο</em> το cache.</li>
+    <li><strong>Αλλαγή system prompt ή μοντέλου</strong> (τα caches είναι ανά μοντέλο).</li>
+    <li><strong>Μη-ντετερμινιστικό serialization:</strong> <code>json.dumps</code> χωρίς <code>sort_keys</code>, iteration πάνω σε <code>set</code>.</li>
+    <li><strong>Δυναμικό περιεχόμενο στην αρχή:</strong> <code>datetime.now()</code>, UUID, session/user ID μέσα στο system prompt.</li>
+    <li><strong>Concurrency:</strong> N παράλληλα requests με ίδιο prefix κάνουν <em>όλα</em> miss — κανένα δεν προλαβαίνει να διαβάσει αυτό που γράφουν τα άλλα. (Το είδαμε στο πείραμα: η παραλληλία ανέβασε τα cache writes.)</li>
+  </ul>
+
+  <!-- ===================== 3. ΑΞΙΖΕΙ; ===================== -->
+  <h2>3. Αξίζει το compacting / pruning, ή σου χαλάει το performance;</h2>
+  <p>Η σύντομη απάντηση: <strong>εξαρτάται απ’ το μήκος της συνομιλίας</strong>, και τα δύο δεν είναι το ίδιο πράγμα.</p>
+
+  <div class="callout bad">
+    <strong>Pruning (front-slash) — <span class="pill r">όχι, μην το κάνεις</span>.</strong> Στα πειράματά μας το naive pruning είναι <em>dominated</em>: ξεχνάει τα πρώτα/μεσαία facts (ακρίβεια 0–17%) <strong>χωρίς</strong> να γλιτώνει χρήματα — και ταυτόχρονα χαλάει το cache της ουράς της συνομιλίας, αφού το παράθυρο μετακινείται κάθε γύρο. Πληρώνεις την «ποινή της λήθης» χωρίς αντάλλαγμα σε κόστος.
+  </div>
+  <div class="callout good">
+    <strong>Compaction — <span class="pill g">ναι, με σωστό <code>n</code></span>.</strong> Στο Haiku, το <code>C/n=40</code> ισοφάρισε το append-only στο <strong>100% ακρίβεια</strong> ($0.123) <em>κρατώντας το context φραγμένο</em>. Το όφελος μεγαλώνει όσο μακραίνει η συνομιλία: το append-only μεγαλώνει γραμμικά (στο όριο γίνεται απαγορευτικό), ενώ το compaction μένει φραγμένο.
+  </div>
+  <p>Δύο προειδοποιήσεις για το compaction:</p>
+  <ul>
+    <li><strong>Πολύ επιθετικό <code>n</code> = κακό:</strong> το <code>C/n=10</code> έπεσε στο 33%. Όταν συνοψίζεις πολύ συχνά, η περίληψη ξανα-συνοψίζεται επανειλημμένα (lossy re-summarization) και χάνονται λεπτομέρειες.</li>
+    <li><strong>Έχει δικό του κόστος:</strong> κάθε compaction είναι μια επιπλέον κλήση σε γρήγορο μοντέλο. Στα νούμερά μας ήταν μικρό (~$0.02–0.12), αλλά υπάρχει.</li>
+  </ul>
+  <p><strong>Κανόνας:</strong> για <em>σύντομες</em> συνομιλίες κράτα append-only (πιο απλό, φθηνό, τέλεια μνήμη). Για <em>μακριές/agentic</em> ροές, compaction σε μέτριο <code>n</code>. Pruning σχεδόν ποτέ.</p>
+
+  <!-- ===================== 4. TOOLS & RAG ===================== -->
+  <h2>4. Πώς αλλάζει η εικόνα με tool calls &amp; RAG</h2>
+  <p>Το πείραμά μας ήταν «καθαρή» συνομιλία. Μόλις μπουν tools και RAG, αλλάζουν τα δεδομένα — και κυρίως το caching.</p>
+
+  <h3>Tool calls</h3>
+  <ul>
+    <li><strong>Τα tools είναι στη θέση 0 του prefix.</strong> Αν αλλάζεις δυναμικά το tool-set ανά request, ακυρώνεις <em>ολόκληρο</em> το cache κάθε φορά. Κράτα το tool-set σταθερό και ταξινομημένο ντετερμινιστικά (π.χ. sort by name).</li>
+    <li><strong>Τα tool results φουσκώνουν το context γρήγορα.</strong> Σε agentic loops, κάθε <code>tool_use</code>/<code>tool_result</code> ζευγάρι προστίθεται στο ιστορικό — το context μεγαλώνει πιο γρήγορα κι απ’ ό,τι στη δική μας συνομιλία. Εδώ το <strong>compaction / context-editing γίνεται ακόμα πιο πολύτιμο</strong>.</li>
+    <li><strong>Όριο 20 blocks (Anthropic):</strong> αν ένας γύρος προσθέσει &gt;20 content blocks (συνηθισμένο με πολλά tool calls), το επόμενο breakpoint δεν «βρίσκει» το προηγούμενο cache. Λύση: ενδιάμεσα breakpoints κάθε ~15 blocks.</li>
+    <li><strong>Tool search:</strong> ανακαλύπτει tools δυναμικά <em>προσθέτοντας</em> schemas (όχι αντικαθιστώντας) → διατηρεί το cache, σε αντίθεση με το να αλλάζεις το <code>tools</code> array.</li>
+    <li><strong>Αλλαγή μοντέλου στη μέση:</strong> για ένα φθηνό υπο-task (π.χ. summarization, όπως κάναμε εμείς με Haiku), <em>μην</em> αλλάζεις το μοντέλο του κύριου loop — σπάει το cache. Κάνε spawn ξεχωριστό sub-agent.</li>
+  </ul>
+
+  <h3>RAG (Retrieval-Augmented Generation)</h3>
+  <ul>
+    <li><strong>Το retrieved περιεχόμενο αλλάζει ανά query → είναι εγγενώς μη-cacheable.</strong> Αν το βάλεις <em>μπροστά</em> (πριν το σταθερό σου περιεχόμενο), ακυρώνεις και ό,τι ήταν cacheable από κάτω. <strong>Βάλ’ το πάντα μετά</strong> το σταθερό cached prefix.</li>
+    <li><strong>Σταθερή knowledge base:</strong> αν επαναχρησιμοποιείς το <em>ίδιο</em> μεγάλο έγγραφο σε πολλά queries, βάλ’ το με <code>cache_control</code> — εκεί κερδίζεις. Δυναμικά top-k chunks ανά query → δεν κερδίζεις cache, μόνο πληρώνεις.</li>
+    <li><strong>Η «λήθη» γίνεται κρίσιμη:</strong> ένα RAG σύστημα πρέπει να κρατάει στο context τα <em>σχετικά</em> retrieved chunks. Είδαμε ότι όταν η πληροφορία κοπεί (Στρατηγική B), το μοντέλο <em>τίμια</em> απαντά «τίποτα απ’ τα παραπάνω» — δεν μαντεύει. Αν κόψεις λάθος chunk, το RAG απλώς δεν ξέρει.</li>
+    <li><strong>Πρακτικά:</strong> cache το σταθερό (system + tools + σταθερά docs), κράτα τα per-query retrieved στο τέλος, και για μακριές συνεδρίες συνδύασε με compaction του ιστορικού διαλόγου (όχι των retrieved — αυτά είναι ήδη εφήμερα).</li>
+  </ul>
+
+  <!-- ===================== 5. ΤΟ ΠΕΙΡΑΜΑ — ΝΟΥΜΕΡΑ ===================== -->
+  <h2>5. Το πείραμα: νούμερα &amp; metrics</h2>
+  <p>Πλήρης σάρωση στο <code>claude-haiku-4-5</code> (συνέντευξη 100 γύρων, εξέταση 12 ερωτήσεων). Το <code>gpt-4o</code> επιβεβαιώνει τα άκρα αλλά η πλήρης σάρωσή του είναι ημιτελής (η λογαριασμός OpenAI εξάντλησε το quota — βλ. Μεθοδολογία).</p>
+
+  <h3>Τι μετράμε</h3>
+  <ul>
+    <li><strong>Cache Hit %</strong> = cached prompt tokens / σύνολο prompt tokens (μόνο οι κλήσεις του κύριου μοντέλου· οι κλήσεις compaction εξαιρούνται από το cache stat αλλά μετράνε στο κόστος).</li>
+    <li><strong>Accuracy %</strong> = ποσοστό σωστών στην MCQ εξέταση (12 ερωτήσεις, ντετερμινιστική βαθμολόγηση).</li>
+    <li><strong>Total Cost $</strong> = κάθε κλήση του config, μαζί με τα compaction calls.</li>
+  </ul>
+
+  <table>
+    <thead><tr>
+      <th>Μοντέλο</th><th>Στρατηγική</th><th class="num">n</th>
+      <th class="num">Cache Hit</th><th class="num">Ακρίβεια</th><th class="num">Κόστος $</th><th class="num">Compaction $</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>claude-haiku-4-5</td><td><span class="tag a">A</span> append-only</td><td class="num">–</td><td class="num">98.5%</td><td class="num"><span class="pill g">100%</span></td><td class="num">0.097</td><td class="num">0.000</td></tr>
+      <tr><td>claude-haiku-4-5</td><td><span class="tag b">B</span> front-slash</td><td class="num">10</td><td class="num">94.0%</td><td class="num"><span class="pill r">0%</span></td><td class="num">0.098</td><td class="num">0.000</td></tr>
+      <tr><td>claude-haiku-4-5</td><td><span class="tag b">B</span> front-slash</td><td class="num">40</td><td class="num">86.1%</td><td class="num"><span class="pill r">0%</span></td><td class="num">0.158</td><td class="num">0.000</td></tr>
+      <tr><td>claude-haiku-4-5</td><td><span class="tag b">B</span> front-slash</td><td class="num">100</td><td class="num">80.7%</td><td class="num"><span class="pill w">16.7%</span></td><td class="num">0.220</td><td class="num">0.000</td></tr>
+      <tr><td>claude-haiku-4-5</td><td><span class="tag c">C</span> compaction</td><td class="num">10</td><td class="num">95.6%</td><td class="num"><span class="pill w">33.3%</span></td><td class="num">0.228</td><td class="num">0.125</td></tr>
+      <tr style="background:#f1faf5"><td>claude-haiku-4-5</td><td><span class="tag c">C</span> compaction</td><td class="num">40</td><td class="num">98.2%</td><td class="num"><span class="pill g">100%</span></td><td class="num">0.123</td><td class="num">0.035</td></tr>
+      <tr><td>claude-haiku-4-5</td><td><span class="tag c">C</span> compaction</td><td class="num">100</td><td class="num">98.7%</td><td class="num"><span class="pill g">83.3%</span></td><td class="num">0.105</td><td class="num">0.017</td></tr>
+      <tr><td>gpt-4o</td><td><span class="tag a">A</span> append-only</td><td class="num">–</td><td class="num">96.9%</td><td class="num"><span class="pill g">100%</span></td><td class="num">0.894</td><td class="num">0.000</td></tr>
+      <tr><td>gpt-4o</td><td><span class="tag b">B</span> front-slash</td><td class="num">10</td><td class="num">73.9%</td><td class="num"><span class="pill r">0%</span></td><td class="num">0.750</td><td class="num">0.000</td></tr>
+    </tbody>
+  </table>
+  <p class="small">Η σειρά <code>C/n=40</code> (πράσινη) είναι το «sweet spot». Οι 5 σειρές <code>gpt-4o</code> C/B σε μεγαλύτερα <code>n</code> εκκρεμούν λόγω quota.</p>
+
+  <h3>Ακρίβεια ανά στρατηγική (Haiku)</h3>
+  <div class="chart">
+    <div class="row"><span class="lbl">A (append-only)</span><span class="bar"><i class="fill-acc" style="width:100%"></i></span><span class="val">100%</span></div>
+    <div class="row"><span class="lbl">C · n=40</span><span class="bar"><i class="fill-acc" style="width:100%"></i></span><span class="val">100%</span></div>
+    <div class="row"><span class="lbl">C · n=100</span><span class="bar"><i class="fill-acc" style="width:83.3%"></i></span><span class="val">83%</span></div>
+    <div class="row"><span class="lbl">C · n=10</span><span class="bar"><i class="fill-acc" style="width:33.3%"></i></span><span class="val">33%</span></div>
+    <div class="row"><span class="lbl">B · n=100</span><span class="bar"><i class="fill-acc" style="width:16.7%"></i></span><span class="val">17%</span></div>
+    <div class="row"><span class="lbl">B · n=40</span><span class="bar"><i class="fill-acc" style="width:0%"></i></span><span class="val">0%</span></div>
+    <div class="row"><span class="lbl">B · n=10</span><span class="bar"><i class="fill-acc" style="width:0%"></i></span><span class="val">0%</span></div>
+  </div>
+
+  <h3>Cache Hit % ανά στρατηγική (Haiku)</h3>
+  <div class="chart">
+    <div class="row"><span class="lbl">C · n=100</span><span class="bar"><i class="fill-cache" style="width:98.7%"></i></span><span class="val">98.7%</span></div>
+    <div class="row"><span class="lbl">A</span><span class="bar"><i class="fill-cache" style="width:98.5%"></i></span><span class="val">98.5%</span></div>
+    <div class="row"><span class="lbl">C · n=40</span><span class="bar"><i class="fill-cache" style="width:98.2%"></i></span><span class="val">98.2%</span></div>
+    <div class="row"><span class="lbl">C · n=10</span><span class="bar"><i class="fill-cache" style="width:95.6%"></i></span><span class="val">95.6%</span></div>
+    <div class="row"><span class="lbl">B · n=10</span><span class="bar"><i class="fill-cache" style="width:94%"></i></span><span class="val">94.0%</span></div>
+    <div class="row"><span class="lbl">B · n=40</span><span class="bar"><i class="fill-cache" style="width:86.1%"></i></span><span class="val">86.1%</span></div>
+    <div class="row"><span class="lbl">B · n=100</span><span class="bar"><i class="fill-cache" style="width:80.7%"></i></span><span class="val">80.7%</span></div>
+  </div>
+
+  <h3>Ανάλυση — τι μας λένε τα νούμερα</h3>
+  <p><strong>Α (append-only): το ταβάνι.</strong> 100% ακρίβεια και στα δύο μοντέλα, με το υψηλότερο cache hit (σταθερό prefix → σχεδόν όλα reads). Στους 100 γύρους είναι και το φθηνότερο στο Haiku — το context δεν πρόλαβε να μεγαλώσει αρκετά ώστε το overhead του compaction να αξίζει. <em>Όμως</em> το κόστος μεγαλώνει γραμμικά: σε χιλιάδες γύρους, το Α γίνεται απαγορευτικό.</p>
+
+  <p><strong>B (pruning): η «λήθη» χωρίς ανταμοιβή.</strong> Δύο σημαντικά μοτίβα:</p>
+  <ul>
+    <li><em>Η ακρίβεια ανεβαίνει με το <code>n</code></em> (0% → 0% → 17%): όσο μεγαλώνει το παράθυρο, καλύπτει πιο πρόσφατους γύρους, αλλά ποτέ δεν φτάνει τα πρώτα facts που ζητάει η εξέταση.</li>
+    <li><em>Το cache hit ΠΕΦΤΕΙ με το <code>n</code></em> (94% → 86% → 81%): όσο μεγαλώνει το (μη-cacheable, γιατί ολισθαίνει) παράθυρο, «αραιώνει» το cached σταθερό system prompt. Δηλαδή το B πληρώνει <em>περισσότερο</em> για να θυμάται <em>λιγάκι</em> παραπάνω.</li>
+    <li><em>Το 0% είναι τίμια αποχή, όχι τύχη:</em> το μοντέλο επιλέγει «τίποτα απ’ τα παραπάνω» όταν δεν έχει το fact — γι’ αυτό πέφτει <em>κάτω</em> απ’ το ~25% της τυχαίας μαντεψιάς. Καλό σημάδι ευθύτητας, κακό για ανάκληση.</li>
+  </ul>
+
+  <p><strong>C (compaction): ο νικητής με μέτρο.</strong> Το <code>n=40</code> ισοφαρίζει το Α (100%) με φραγμένο context και 98.2% cache. Το <code>n=10</code> καταρρέει στο 33% (υπερβολικά συχνή, lossy σύνοψη). Το <code>n=100</code> πιάνει 83% (2 λάθη στις 12 — μέσα στο εύρος θορύβου). Το cache hit του C είναι σταθερά υψηλό (95–99%) γιατί η περίληψη ξαναφτιάχνει σταθερό prefix.</p>
+
+  <p><strong>Διασταυρωτικά (cross-provider):</strong> το <code>gpt-4o</code> κοστίζει ~9× το Haiku στο append-only ($0.894 vs $0.097) — η επιλογή μοντέλου κυριαρχεί στο κόστος. Επίσης το cache του OpenAI φάνηκε λιγότερο «επιθετικό»: <code>gpt-4o</code> B/n=10 είχε 73.9% cache έναντι 94% του Haiku, επειδή η ρητή στρατηγική breakpoints του Anthropic + το μεγάλο σταθερό system δίνουν υψηλότερο hit.</p>
+
+  <div class="callout good"><strong>Pareto-βέλτιστο:</strong> για το Haiku στους 100 γύρους, το <strong>Α</strong> κυριαρχεί (φθηνότερο <em>και</em> ακριβέστερο). Αλλά η <strong>καλύτερη επιλογή φραγμένου context</strong> είναι το <strong>C/n=40</strong> (100% στα $0.123) — κι αυτό είναι που θα κερδίσει σε πραγματικές, μακριές agentic συνομιλίες.</div>
+
+  <!-- ===================== 6. ΠΡΑΚΤΙΚΟΙ ΚΑΝΟΝΕΣ ===================== -->
+  <h2>6. Πρακτικοί κανόνες (cheat sheet)</h2>
+  <ul>
+    <li><strong>Σταθερά μπροστά, μεταβλητά πίσω.</strong> system + tools + σταθερά docs στην αρχή (cached)· timestamps, IDs, retrieved chunks, τρέχουσα ερώτηση στο τέλος.</li>
+    <li><strong>Πάγωσε το system prompt &amp; το tool-set.</strong> Μην ενσωματώνεις ημερομηνία/όνομα χρήστη μέσα τους· πέρνα τα ως ξεχωριστό message πιο κάτω.</li>
+    <li><strong>Μέγεθος έχει σημασία:</strong> βεβαιώσου ότι το cached prefix ξεπερνά το ελάχιστο του μοντέλου (4096 για Haiku 4.5/Opus), αλλιώς πληρώνεις σιωπηλά πλήρη τιμή.</li>
+    <li><strong>Επιβεβαίωσε με metrics:</strong> αν το <code>cache_read</code> είναι 0 σε επαναλαμβανόμενα ίδια prefixes, ψάξε silent invalidator.</li>
+    <li><strong>Σύντομη συνομιλία → append-only. Μακριά/agentic → compaction σε μέτριο <code>n</code>. Pruning → σχεδόν ποτέ.</strong></li>
+    <li><strong>Tool-heavy:</strong> σταθερό, ταξινομημένο tool-set· tool search αντί για swap· πρόσεξε το όριο 20-blocks.</li>
+  </ul>
+
+  <!-- ===================== 7. ΜΕΘΟΔΟΛΟΓΙΑ ===================== -->
+  <h2>7. Μεθοδολογία &amp; επιφυλάξεις</h2>
+  <ul>
+    <li><strong>Ντετερμινιστική βαθμολόγηση,</strong> αλλά η <em>επιλογή</em> του μοντέλου είναι στοχαστική (το <code>temperature</code> δεν καρφώθηκε) και η εξέταση έχει 12 ερωτήσεις — μικρές διαφορές είναι θόρυβος.</li>
+    <li><strong>Concurrency:</strong> κάποια configs μετρήθηκαν υπό παράλληλη εκτέλεση, που προσθέτει θόρυβο στο cache hit %.</li>
+    <li><strong>gpt-4o ημιτελές:</strong> ο λογαριασμός OpenAI εξάντλησε το quota (το tier των 30k TPM έκανε και την υψηλή παραλληλία αντιπαραγωγική — το Anthropic, αντίθετα, παραλληλίστηκε καθαρά). Συμπληρώνεται με <span class="kbd">python run_matrix.py --resume</span>.</li>
+    <li><strong>Πλήρης ιχνηλασιμότητα:</strong> κάθε κλήση καταγράφηκε με πλήρες payload σε SQLite· το <code>results/report.md</code> είναι η μηχανο-παραγόμενη σύνοψη.</li>
+  </ul>
+
+  <div class="foot">
+    Πείραμα: <em>Chat-History Compacting Experiment</em> · Στρατηγικές A/B/C × <code>n∈{10,40,100}</code> · <code>gpt-4o</code> &amp; <code>claude-haiku-4-5</code>.
+    Δημιουργήθηκε αυτόματα από τα δεδομένα του πειράματος (<code>results/benchmark.sqlite</code>).
+  </div>
+
+</div>
+</body>
+</html>
